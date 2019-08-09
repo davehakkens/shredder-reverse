@@ -4,7 +4,7 @@
   There's a safety in the wiring that makes sure both directions cannot switch on both at once,
   but the arduino wouldn't do that either.
   This sketch also monitors the current through the motor with a Hall sensor. If the current rises above a set limit, |
-  the machine will register a jam. It will turn back for a second and try again for a set amount of times. If it continues 
+  the machine will register a jam. It will turn back for a second and try again for a set amount of times. If it continues
   to be jammed it switches off.
   Oh and it also makes use of a display to tell the world how it is doing.
   It is possible to use the serial plotter to monitor current, since that is the only number that is dumped on serial.
@@ -31,7 +31,7 @@ LiquidCrystal_I2C lcd(0x38, 20, 2);           //set the address and dimensions o
 void setup() {
   lcd.init();                                       //Setup the LCD
   lcd.setBacklight(HIGH);
-  lcd.print("COWABUNGA!");
+  lcd.print("COWABUNGA!"); // wtf does this mean?
   // initialize the output pins:
   pinMode(motionPin, OUTPUT);
   pinMode(directionPin, OUTPUT);
