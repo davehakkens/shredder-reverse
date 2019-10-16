@@ -1,4 +1,4 @@
-
+  
 /*
   this sketch lets an ac induction motor switch direction
   at the push of a three-state button: forward, reverse and stop. And there's a big switch that switches off everything.
@@ -18,6 +18,11 @@
 #define SHRED_FW  1
 #define SHRED_REV 2
 
+#define JAMMED_NO 0
+#define JAMMED_YE 1
+#define JAMMED_RV 2
+#define JAMMED_RE 3
+
 //#define DEBUG 1
 
 // constants won't change. They're used here to set pin numbers:
@@ -29,14 +34,16 @@ const int measurePin = A0;   // this pin has a hall sensor connected to it that 
 
 int startSpan = 400;    // Time to ignore current spikes due to motor start //TODO: allow GUI configuration
 int maxJams = 3;        //this int sets the max amount of jams in a set time
-int minJamTime = 40000; //this int sets that time in milliseconds (forty seconds now)
+int minJamTime = 9000; //this int sets that time in milliseconds (forty seconds now)
 int currentCap = 650;   // this is the value over which the hall sensor signal will register as a jam.
 int minCurrent = 0; //this is the current value that the machine uses to recognise when it is spinning, but not shredding.
+int jamState = JAMMED_NO;
+unsigned long jamTick;
 
 unsigned long jamTime=0;       //this int will store time between problematic jams
 int current;                   // this in will store the measured current
 int jammedCounter = 0;         // this int will store the amount of Jams within the minJamTime
-unsigned long startTime;       // this int is needed to count the interval between jams.
+unsigned long startTime=0;       // this int is needed to count the interval between jams.
 int i;
 
 boolean working = true;
@@ -52,6 +59,7 @@ byte pBar[8] = {0x1f,0x1f,0x1f,0x1f,0x1f,0x1f,0x1f,0x1f};
 void setup() {
   // initialize the output pins:
   pinMode(motionPin, OUTPUT);
+  digitalWrite(motionPin, HIGH);  //STOP shredder at boot //TODO: change from inverted to normal logic: HIGH -> ON
   pinMode(directionPin, OUTPUT);
   // initialize input pins:
   pinMode(shredButton, INPUT);
@@ -84,23 +92,48 @@ void setup() {
 
 // here comes what the machine will do while running, which is basically shred, reverse or do nothing
 void loop() {
-  if(alarmed)return;
   current = analogRead(measurePin);
   checkDirection();
-  if (working && millis()>=lastStart+startSpan && current > currentCap){
-    halt();                                    // the machine stops
-    countJams();                               // count how often this happens within an unacceaptable timeframe
-    if (jammedCounter >= maxJams) {
-      alarm();                                 // If it has jammed too much in timeframe stop everything
-    }else{
-      //TODO: change reverse to state machine instead of delays
+  if(!alarmed){
+    if(jamState == JAMMED_NO){
+      if (working && millis()>=lastStart+startSpan && current > currentCap){
+        halt();                                    // the machine stops
+        countJams();                               // count how often this happens within an unacceaptable timeframe
+        if (jammedCounter >= maxJams) {
+          alarm();                                 // If it has jammed too much in timeframe stop everything
+        }else{
+          jamTick  = millis();
+          jamState = JAMMED_YE;
+        }
+      }
+    }
+    switch (jamState){
       //TODO: what to do on reversed jam ???
-      delay(2000);                               // wait a bit to make the shredder halt
-      reverse();                                 // then it reverses
-      delay(2000);                               // for two seconds
-      halt();                                    // then stops
-      delay(3000);                               // for a second to let the motor come to a halt.
-      shred();
+      case JAMMED_YE:
+        if(millis() > jamTick+2000){              // wait a bit to make the shredder halt
+          reverse();                               // then it reverses
+          jamTick  = millis();
+          jamState = JAMMED_RV;
+        }
+      break;
+      case JAMMED_RV:
+        if(millis() > jamTick+3000){              // Reverse for two seconds
+          halt();                                  // then stops
+          jamTick  = millis();
+          jamState = JAMMED_RE;
+        }
+      break;
+      case JAMMED_RE:
+        if(millis() > jamTick+3000){              // Let the motor come to a halt
+          jamState = JAMMED_NO;
+          if(shredDir == SHRED_FW)
+            shred();
+          else
+            reverse();
+        }
+      break;
+      default:
+      break;
     }
   }
   Serial.println(current);                     // You can read the current over serial
@@ -145,7 +178,7 @@ void countJams() {
   Serial.println(millis());
 #endif
   if(startTime==0){
-    jamTime = minJamTime;                 //If it is the first time dont mind elapsed time betwen jams
+    jamTime = minJamTime;                 //If it is the first time, don't mind elapsed time betwen jams
   }else{
     jamTime = millis() - startTime;       //check how much time is between jams and store this in jamTime
   }
@@ -187,13 +220,16 @@ void checkDirection() {
    *  If none is pushed we assume it is off
    *  It's not possible to push both at the same time (in that case we assume shred forward)
    */ 
-  int shredInput = digitalRead(shredButton);              //check which button is pressed
+  int shredInput = digitalRead(shredButton);            //check which button is pressed
   int reverseInput =  digitalRead(reverseButton);
   if (shredInput == LOW && reverseInput==LOW){          //if you are set to stop
     if(working){
-      halt();                                               //don't move
+      halt();                                           //don't move
       working = false;
       shredDir = SHRED_ST;
+      jamState = JAMMED_NO;
+//      jammedCounter = 0;                              //Should we restart jamming count?
+      alarmed = false;
     }
   }else{
     if(!working){
@@ -203,7 +239,7 @@ void checkDirection() {
     //TODO: check rotation shift and wait before changing
     if (shredInput == HIGH){                          //if you are set to shred
       if(shredDir!=SHRED_FW){
-        shred();                                           //shred
+        shred();                                      //shred
         shredDir = SHRED_FW;
       }
     }else{                                               //if you are set to reverse
@@ -217,9 +253,12 @@ void checkDirection() {
 
 void printBar() {       //displays the drawn current as a bar
   int pBari = map(current, 500, currentCap, 0, 17);  // turn the current current value into a percentage of the currentcap, considering the scale starts a 500.
-  for (i = 0; i < pBari; i++) {
+  for (i = 0; i < 17; i++) {
     lcd.setCursor(i, 1);
-    lcd.write(byte(0));
+    if(i>pBari)
+      lcd.print(" ");
+    else
+      lcd.write(byte(0));
   }
 }
 
