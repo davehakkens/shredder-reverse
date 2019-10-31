@@ -4,7 +4,7 @@
   at the push of a three-state button: forward, reverse and stop. And there's a big switch that switches off everything.
   There's a safety in the wiring that makes sure both directions cannot switch on both at once,
   but the arduino wouldn't do that either.
-  This sketch also monitors the current through the motor with a Hall sensor. If the current rises above a set limit, |
+  This sketch also monitors the current through the motor with a Hall sensor. If the current rises above a set limit,
   the machine will register a jam. It will turn back for a second and try again for a set amount of times. If it continues
   to be jammed it switches off.
   Oh and it also makes use of a display to tell the world how it is doing.
@@ -25,31 +25,35 @@
 #define JAMMED_RV 2             // Reversing after jammed state
 #define JAMMED_RE 3             // Jamming reverse done state: waiting for motor to loose inertia
 
-#define A_READ_OFFSET 538
-
-//TODO: change to define
+#define A_2_AREAD(c) (v0A + (c/AnalogR2A))
+#define AREAD_2_A(c) ((c - v0A)*AnalogR2A)
 const float AnalogR2A = 5.0 / (1024 * 0.066);
+
+/* Variables for configuration, adjust for your setup: */
+// TODO: allow GUI configuration
+int v0A = 538;                 // Tune this value to Analog read when no current flowing
+int startSpan = 500;           // Time to ignore current spikes due to motor start
+int maxJams = 3;               // Max amount of jams in a set time
+int minJamTime = 15000;        // That time in milliseconds
+int unjamReverseT = 3000;      // Retraction time to unjam
+int maxCurrent = 12;           // Max current in Amps, to detect jams
+/* Config end */
 
 // constants won't change. They're used here to set pin numbers:
 const int shredButton = 7;     // the number of the pin that registers if you want the machine to shred
-const int reverseButton = 6;    // the number of the pin that registers if you want the machine to reverse
-const int motionPin = 4;     // the number of the pin that decides if the motor turns
-const int directionPin = 3;     // the number of the pin that decides the driection of the motor
-const int measurePin = A0;   // this pin has a hall sensor connected to it that measures the output current to the motor
+const int reverseButton = 6;   // the number of the pin that registers if you want the machine to reverse
+const int motionPin = 4;       // the number of the pin that decides if the motor turns
+const int directionPin = 3;    // the number of the pin that decides the driection of the motor
+const int measurePin = A0;     // this pin has a hall sensor connected to it that measures the output current to the motor
 
-int startSpan = 500;    // Time to ignore current spikes due to motor start //TODO: allow GUI configuration
-int maxJams = 3;        //this int sets the max amount of jams in a set time
-int minJamTime = 9000; //this int sets that time in milliseconds (forty seconds now)
-int currentCap = A_READ_OFFSET + (12/AnalogR2A);   // this is the value over which the hall sensor signal will register as a jam.
-//TODO: USE everything in Amps  -> float currentCap = 12.0;   // this is the value over which the hall sensor signal will register as a jam.
-float minCurrent = 0; //this is the current value that the machine uses to recognise when it is spinning, but not shredding.
+int currentCap = A_2_AREAD(maxCurrent);   // this is the value over which the hall sensor signal will register as a jam.
 int jamState = JAMMED_NO;
 unsigned long jamTick;
 
-unsigned long jamTime = 0;     //this int will store time between problematic jams
-int current;                   // this in will store the measured current
+unsigned long jamTime = 0;     // this int will store time between problematic jams
+int current;                   // this int will store the measured current
 int jammedCounter = 0;         // this int will store the amount of Jams within the minJamTime
-unsigned long startTime = 0;     // this int is needed to count the interval between jams.
+unsigned long startTime = 0;   // this int is needed to count the interval between jams.
 int i;
 
 boolean working = true;
@@ -117,38 +121,37 @@ void loop() {
       }
     }
     switch (jamState) {
-      //TODO: what to do on reversed jam ???
       case JAMMED_YE:
-        if (millis() > jamTick + 2000) {          // wait a bit to make the shredder halt
+        if ((current<=v0A+2) || (millis() > jamTick + 2000)) {          // wait a bit to make the shredder halt
           reverse();                               // then it reverses
           jamTick  = millis();
           jamState = JAMMED_RV;
         }
         break;
       case JAMMED_RV:
-        if (millis() > jamTick + 3000) {          // Reverse for two seconds
-          halt();                                  // then stops
+        if (millis() > jamTick + unjamReverseT) {          // Reverse for set amount and stop
+          halt();
           jamTick  = millis();
           jamState = JAMMED_RE;
         }
         break;
       case JAMMED_RE:
-        if (millis() > jamTick + 3000) {          // Let the motor come to a halt
+        if ((current<=v0A+2) || (millis() > jamTick + 3000)) {          // Let the motor come to a halt
           jamState = JAMMED_NO;
           if (shredDir == SHRED_FW)
             shred();
           else
-            reverse();
+            reverse();      //On reversed jam stop and try again
         }
         break;
       default:
         break;
     }
+    printCurrent();      // display this as value in amps.
+    printBar();          //displays current as a progress bar.
+    //printValue();      //you can also display the measured value.
   }
-  Serial.println(current);                     // You can read the current over serial
-  printCurrent();      // display this as value in amps.
-  printBar();          //displays current as a progress bar.
-  //printValue();      //you can also display the measured value.
+  Serial.println(AREAD_2_A(current));             // You can read the current over serial
 }
 
 void shred() {
@@ -261,7 +264,7 @@ void checkDirection() {
 }
 
 void printBar() {       //displays the drawn current as a bar
-  int pBari = map(current, A_READ_OFFSET+10, currentCap, 0, 17);  // turn the current current value into a percentage of the currentcap, considering sensor 0 value
+  int pBari = map(current, v0A+10, currentCap, 0, 17);  // turn the current current value into a percentage of the currentcap, considering sensor 0 value
   for (i = 0; i < 17; i++) {
     lcd.setCursor(i, 1);
     if (i > pBari)
@@ -281,7 +284,7 @@ void printValue() {           //displays the drawn current as a value
 }
 
 void printCurrent() {
-  float currentA = (current - A_READ_OFFSET)*AnalogR2A;
+  float currentA = AREAD_2_A(current);
   if(currentA<0)currentA=0;
   if(millis()<lastCurrentPrint+250){
     currentAvg += currentA;
