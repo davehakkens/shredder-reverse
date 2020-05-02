@@ -32,7 +32,7 @@ Running params can be tunned for your particular setup via serial port
 
 Send "config" to enter into configuration mode, current reads will stop waiting for configuration
 Send values separated via comas (all are ints)
-  
+
 `configV, v0A, startSpan, maxJams, minJamTime, unjamReverseT, maxCurrent`
 
 Default values are:
