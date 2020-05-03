@@ -32,7 +32,7 @@ Running params can be tunned for your particular setup via serial port
 
 Send "config" to enter into configuration mode, current reads will stop waiting for configuration
 Send values separated via comas (all are ints)
-  
+
 `configV, v0A, startSpan, maxJams, minJamTime, unjamReverseT, maxCurrent`
 
 Default values are:
@@ -50,3 +50,8 @@ Things that are still on the TODO list:
 - [ ] Circuit diagram & PCB
 - [ x ] Allow configuring parameters from GUI
 - [ ] List of components
+
+## License
+Unless otherwise specified, the code in this repository is licensed under an [MIT license](license.md) and all documentation that goes with it is licensed under a [Creative Commons Attribution - Sharealike International 4.0. License](http://creativecommons.org/licenses/by-sa/4.0/).
+
+[![Creative Commons License](http://i.creativecommons.org/l/by-sa/4.0/88x31.png)](http://creativecommons.org/licenses/by-sa/4.0/)
